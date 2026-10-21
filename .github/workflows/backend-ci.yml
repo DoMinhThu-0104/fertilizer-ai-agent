@@ -1,4 +1,3 @@
-
 name: Backend CI
 
 on:
@@ -16,6 +15,26 @@ jobs:
   backend-build-test:
     name: Build and test backend
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: fertilizer_ai_agent
+          POSTGRES_USER: fertilizer_app
+          POSTGRES_PASSWORD: ci_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fertilizer_app -d fertilizer_ai_agent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_DB: fertilizer_ai_agent
+      POSTGRES_USER: fertilizer_app
+      POSTGRES_PASSWORD: ci_test_password
 
     defaults:
       run:
