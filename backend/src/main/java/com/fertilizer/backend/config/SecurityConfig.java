@@ -12,12 +12,14 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     static final String WEBHOOK_PATH = "/webhooks/facebook";
+    static final String API_PATH = "/api/**";
 
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // Webhook không có session/CSRF token; được bảo vệ bằng chữ ký của Meta
-            .csrf(csrf -> csrf.ignoringRequestMatchers(WEBHOOK_PATH))
+            // Webhook không có session/CSRF token; được bảo vệ bằng chữ ký của Meta.
+            // /api/** gọi bằng Basic Auth (không dùng cookie) nên không cần CSRF token.
+            .csrf(csrf -> csrf.ignoringRequestMatchers(WEBHOOK_PATH, API_PATH))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(WEBHOOK_PATH).permitAll()
                 .anyRequest().authenticated())
