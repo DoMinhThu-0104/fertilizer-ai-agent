@@ -57,6 +57,10 @@ public class LlmClient {
     }
 
     public Reply chat(String userMessage) {
+        return chat(null, userMessage);
+    }
+
+    public Reply chat(String systemPrompt, String userMessage) {
         if (!configured) {
             throw new LlmException("Chưa cấu hình LLM_BASE_URL hoặc LLM_API_KEY");
         }
@@ -65,7 +69,7 @@ public class LlmClient {
         for (String model : models) {
             for (int attempt = 1; attempt <= ATTEMPTS_PER_MODEL; attempt++) {
                 try {
-                    return new Reply(call(model, userMessage), model);
+                    return new Reply(call(model, systemPrompt, userMessage), model);
                 } catch (RestClientResponseException e) {
                     last = e;
                     int status = e.getStatusCode().value();
@@ -86,10 +90,13 @@ public class LlmClient {
         throw new LlmException("Không gọi được LLM sau khi thử các model " + models, last);
     }
 
-    private String call(String model, String userMessage) {
-        Map<String, Object> body = Map.of(
-                "model", model,
-                "messages", List.of(Map.of("role", "user", "content", userMessage)));
+    private String call(String model, String systemPrompt, String userMessage) {
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (systemPrompt != null && !systemPrompt.isBlank()) {
+            messages.add(Map.of("role", "system", "content", systemPrompt));
+        }
+        messages.add(Map.of("role", "user", "content", userMessage));
+        Map<String, Object> body = Map.of("model", model, "messages", messages);
 
         Map<?, ?> res = client.post()
                 .uri("/chat/completions")
