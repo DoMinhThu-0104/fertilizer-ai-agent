@@ -19,16 +19,16 @@ public class ChatController {
 
     public record ChatResponse(String reply, String model) {}
 
-    private final LlmClient llm;
+    private final AgentService agent;
 
-    public ChatController(LlmClient llm) {
-        this.llm = llm;
+    public ChatController(AgentService agent) {
+        this.agent = agent;
     }
 
     @PostMapping
     public ChatResponse chat(@Valid @RequestBody ChatRequest request) {
         try {
-            LlmClient.Reply reply = llm.chat(request.message());
+            LlmClient.Reply reply = agent.reply(request.message());
             return new ChatResponse(reply.text(), reply.model());
         } catch (LlmException e) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, e.getMessage());
