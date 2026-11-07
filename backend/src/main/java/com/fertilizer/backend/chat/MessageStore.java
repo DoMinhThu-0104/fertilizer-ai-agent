@@ -47,4 +47,36 @@ public class MessageStore {
                 .update();
         return inserted == 1;
     }
+
+    /** Lưu tin hệ thống gửi cho khách (direction OUT) vào đúng hội thoại. */
+    @Transactional
+    public void saveOutgoing(String pageId, String senderId, String mid, String text) {
+        jdbc.sql("""
+                INSERT INTO message (conversation_id, direction, external_id, body, sent_at)
+                SELECT c.id, 'OUT', :mid, :body, now()
+                FROM conversation c
+                WHERE c.page_id = :page AND c.sender_id = :sender
+                ON CONFLICT (external_id) DO NOTHING
+                """)
+                .param("page", pageId)
+                .param("sender", senderId)
+                .param("mid", mid)
+                .param("body", text)
+                .update();
+        jdbc.sql("UPDATE conversation SET last_message_at = now() WHERE page_id = :page AND sender_id = :sender")
+                .param("page", pageId)
+                .param("sender", senderId)
+                .update();
+    }
+
+    /** Hội thoại đang do nhân viên xử lý (status = NGUOI) thì AI không trả lời. */
+    public boolean isHandedToHuman(String pageId, String senderId) {
+        return jdbc.sql("SELECT status FROM conversation WHERE page_id = :page AND sender_id = :sender")
+                .param("page", pageId)
+                .param("sender", senderId)
+                .query(String.class)
+                .optional()
+                .map("NGUOI"::equals)
+                .orElse(false);
+    }
 }

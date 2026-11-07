@@ -19,6 +19,8 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import com.fertilizer.backend.chat.ReplyService;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -27,6 +29,8 @@ import org.springframework.test.web.servlet.MockMvc;
         "facebook.verify-token=test-verify"
 })
 class FacebookWebhookStoresMessageTest {
+
+    @MockitoBean ReplyService replyService;
 
     @Autowired MockMvc mvc;
     @Autowired DataSource dataSource;
