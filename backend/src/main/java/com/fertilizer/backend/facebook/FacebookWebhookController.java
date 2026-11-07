@@ -3,6 +3,7 @@ package com.fertilizer.backend.facebook;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.List;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -19,18 +20,28 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fertilizer.backend.chat.MessageStore;
+import com.fertilizer.backend.chat.MessengerEvent;
+import com.fertilizer.backend.chat.MessengerPayloadParser;
+
 @RestController
 @RequestMapping("/webhooks/facebook")
 public class FacebookWebhookController {
 
     private static final Logger log = LoggerFactory.getLogger(FacebookWebhookController.class);
 
+    private final MessengerPayloadParser parser;
+    private final MessageStore store;
     private final String appSecret;
     private final String verifyToken;
 
     public FacebookWebhookController(
+            MessengerPayloadParser parser,
+            MessageStore store,
             @Value("${facebook.app-secret:}") String appSecret,
             @Value("${facebook.verify-token:}") String verifyToken) {
+        this.parser = parser;
+        this.store = store;
         this.appSecret = appSecret;
         this.verifyToken = verifyToken;
     }
@@ -57,8 +68,17 @@ public class FacebookWebhookController {
             log.warn("Facebook webhook rejected: invalid signature");
             return ResponseEntity.status(403).build();
         }
-        // TODO (sau migration V2): parse JSON, lưu webhook_events (khóa duy nhất theo mid),
-        // đưa vào job_queue, rồi trả 200. Không log nội dung tin nhắn.
+
+        // C-01: lưu tin nhắn. Không log nội dung tin nhắn.
+        // C-04 sẽ thêm xử lý nền; C-02 sẽ gửi trả lời.
+        List<MessengerEvent> events = parser.parse(raw);
+        int saved = 0;
+        for (MessengerEvent event : events) {
+            if (store.saveIncoming(event)) {
+                saved++;
+            }
+        }
+        log.info("Facebook webhook: nhận {} tin, lưu mới {}", events.size(), saved);
         return ResponseEntity.ok().build();
     }
 
