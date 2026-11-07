@@ -1,5 +1,6 @@
 package com.fertilizer.backend.llm;
 
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -33,7 +34,7 @@ class ChatControllerTest {
     @Test
     @WithMockUser
     void returnsReplyFromLlm() throws Exception {
-        when(llm.chat(anyString(), anyString())).thenReturn(new LlmClient.Reply("Chào bạn", "test-model"));
+        when(llm.chat(anyString(), anyString(), anyList())).thenReturn(new LlmClient.Reply("Chào bạn", "test-model"));
 
         mvc.perform(post("/api/chat")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"Xin chào\"}"))
@@ -53,7 +54,7 @@ class ChatControllerTest {
     @Test
     @WithMockUser
     void llmFailureReturns503() throws Exception {
-        when(llm.chat(anyString(), anyString())).thenThrow(new LlmException("hết model"));
+        when(llm.chat(anyString(), anyString(), anyList())).thenThrow(new LlmException("hết model"));
 
         mvc.perform(post("/api/chat")
                 .contentType(MediaType.APPLICATION_JSON).content("{\"message\":\"Xin chào\"}"))
