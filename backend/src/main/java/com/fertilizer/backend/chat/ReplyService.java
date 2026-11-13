@@ -2,13 +2,15 @@ package com.fertilizer.backend.chat;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.fertilizer.backend.llm.AgentService;
 import com.fertilizer.backend.llm.LlmClient;
 
-/** Nhờ AI soạn câu trả lời rồi gửi cho khách và lưu tin gửi đi. Chạy nền, không log nội dung tin. */
+/**
+ * Soạn câu trả lời bằng AI rồi gửi cho khách và lưu tin gửi đi. Được ReplyWorker gọi trên luồng nền.
+ * Lỗi gửi ở phần đầu tiên được ném ra để worker thử lại. Không log nội dung tin.
+ */
 @Service
 public class ReplyService {
 
@@ -32,7 +34,6 @@ public class ReplyService {
         this.handoff = handoff;
     }
 
-    @Async
     public void reply(MessengerEvent event) {
         ConversationContext ctx = ConversationContext.open(event.pageId(), event.senderId());
         try {
@@ -44,7 +45,6 @@ public class ReplyService {
                 send(event, HANDOFF_MESSAGE);
                 return;
             }
-
             String authorityReason = AuthorityRequestDetector.reasonFor(event.text()).orElse(null);
             if (authorityReason != null) {
                 handoff.toHuman(event.pageId(), event.senderId(), authorityReason);
@@ -70,17 +70,27 @@ public class ReplyService {
                 return;
             }
             send(event, answer);
-        } catch (RuntimeException e) {
-            log.warn("Không gửi được trả lời: {}", e.getMessage());
         } finally {
             ConversationContext.close();
         }
     }
 
+    /** Gửi từng phần. Lỗi ở phần đầu thì ném ra (worker thử lại); lỗi ở phần sau thì chỉ ghi log. */
     private void send(MessengerEvent event, String text) {
+        int sent = 0;
         for (String part : MessengerSender.split(text)) {
-            String mid = sender.send(event.senderId(), part);
+            String mid;
+            try {
+                mid = sender.send(event.senderId(), part);
+            } catch (MessengerException e) {
+                if (sent == 0) {
+                    throw e;
+                }
+                log.warn("Đã gửi {} phần, phần sau lỗi: {}", sent, e.getMessage());
+                return;
+            }
             store.saveOutgoing(event.pageId(), event.senderId(), mid, part);
+            sent++;
         }
     }
 }

@@ -23,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.fertilizer.backend.chat.MessageStore;
 import com.fertilizer.backend.chat.MessengerEvent;
 import com.fertilizer.backend.chat.MessengerPayloadParser;
-import com.fertilizer.backend.chat.ReplyService;
 
 @RestController
 @RequestMapping("/webhooks/facebook")
@@ -33,19 +32,16 @@ public class FacebookWebhookController {
 
     private final MessengerPayloadParser parser;
     private final MessageStore store;
-    private final ReplyService replies;
     private final String appSecret;
     private final String verifyToken;
 
     public FacebookWebhookController(
             MessengerPayloadParser parser,
             MessageStore store,
-            ReplyService replies,
             @Value("${facebook.app-secret:}") String appSecret,
             @Value("${facebook.verify-token:}") String verifyToken) {
         this.parser = parser;
         this.store = store;
-        this.replies = replies;
         this.appSecret = appSecret;
         this.verifyToken = verifyToken;
     }
@@ -73,13 +69,13 @@ public class FacebookWebhookController {
             return ResponseEntity.status(403).build();
         }
 
-        // C-01: lưu tin. C-02: tin mới thì trả lời ở luồng nền. Không log nội dung tin nhắn.
+        // C-01/C-04: chỉ lưu tin (trạng thái PENDING) rồi trả 200 ngay; ReplyWorker lo việc trả lời.
+        // Không log nội dung tin nhắn.
         List<MessengerEvent> events = parser.parse(raw);
         int saved = 0;
         for (MessengerEvent event : events) {
             if (store.saveIncoming(event)) {
                 saved++;
-                replies.reply(event);
             }
         }
         log.info("Facebook webhook: nhận {} tin, lưu mới {}", events.size(), saved);
