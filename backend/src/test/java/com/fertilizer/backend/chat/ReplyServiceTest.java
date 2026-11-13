@@ -20,7 +20,8 @@ class ReplyServiceTest {
     private final AgentService agent = mock(AgentService.class);
     private final MessengerSender sender = mock(MessengerSender.class);
     private final MessageStore store = mock(MessageStore.class);
-    private final ReplyService service = new ReplyService(agent, sender, store);
+    private final HandoffService handoff = mock(HandoffService.class);
+    private final ReplyService service = new ReplyService(agent, sender, store, handoff);
 
     private final MessengerEvent event = new MessengerEvent("P1", "U1", "mid.in1", "Giá phân DAP?", Instant.now());
 
@@ -62,8 +63,57 @@ class ReplyServiceTest {
         when(agent.reply(anyString())).thenReturn(new LlmClient.Reply("Xin chào", "test"));
         when(sender.send(anyString(), anyString())).thenThrow(new MessengerException("Send API trả lỗi HTTP 400"));
 
-        service.reply(event); // không được ném lỗi ra ngoài luồng nền
+        service.reply(event);
 
         verify(store, never()).saveOutgoing(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void customerAskingForHumanIsHandedOffWithoutCallingAgent() {
+        MessengerEvent ask = new MessengerEvent("P1", "U1", "mid.in2", "Cho mình gặp nhân viên nhé", Instant.now());
+        when(store.isHandedToHuman("P1", "U1")).thenReturn(false);
+        when(sender.send(eq("U1"), anyString())).thenReturn("mid.out3");
+
+        service.reply(ask);
+
+        verify(handoff).toHuman("P1", "U1", "KHACH_YEU_CAU");
+        verify(agent, never()).reply(anyString());
+        verify(store).saveOutgoing(eq("P1"), eq("U1"), eq("mid.out3"), argThat(s -> s.contains("nhân viên")));
+    }
+
+    @Test
+    void aiHandoffStillSendsTheFinalAnswerToCustomer() {
+        when(store.isHandedToHuman("P1", "U1")).thenReturn(false, true);
+        when(agent.reply(anyString())).thenAnswer(inv -> {
+            ConversationContext.current().orElseThrow().markHandedOff(); // như công cụ chuyen_nhan_vien
+            return new LlmClient.Reply("Mình sẽ chuyển nhân viên hỗ trợ bạn.", "test");
+        });
+        when(sender.send(anyString(), anyString())).thenReturn("mid.out4");
+
+        service.reply(event);
+
+        verify(sender).send("U1", "Mình sẽ chuyển nhân viên hỗ trợ bạn.");
+    }
+
+    @Test
+    void staffTakingOverWhileAiComposesSuppressesTheReply() {
+        when(store.isHandedToHuman("P1", "U1")).thenReturn(false, true);
+        when(agent.reply(anyString())).thenReturn(new LlmClient.Reply("Câu trả lời của AI", "test"));
+
+        service.reply(event);
+
+        verify(sender, never()).send(anyString(), anyString());
+    }
+
+    @Test
+    void overAuthorityRequestIsHandedOffByCode() {
+        MessengerEvent cancel = new MessengerEvent("P1", "U1", "mid.in5", "Mình muốn hủy đơn hàng này", Instant.now());
+        when(store.isHandedToHuman("P1", "U1")).thenReturn(false);
+        when(sender.send(eq("U1"), anyString())).thenReturn("mid.out5");
+
+        service.reply(cancel);
+
+        verify(handoff).toHuman("P1", "U1", "HUY_DON");
+        verify(agent, never()).reply(anyString());
     }
 }
