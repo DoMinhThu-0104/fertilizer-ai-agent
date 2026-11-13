@@ -36,8 +36,9 @@ public class MessageStore {
                 .single();
 
         int inserted = jdbc.sql("""
-                INSERT INTO message (conversation_id, direction, external_id, body, sent_at)
-                VALUES (:conv, 'IN', :mid, :body, :sentAt)
+                INSERT INTO message (conversation_id, direction, external_id, body, sent_at,
+                                     reply_status, reply_next_at)
+                VALUES (:conv, 'IN', :mid, :body, :sentAt, 'PENDING', now())
                 ON CONFLICT (external_id) DO NOTHING
                 """)
                 .param("conv", conversationId)

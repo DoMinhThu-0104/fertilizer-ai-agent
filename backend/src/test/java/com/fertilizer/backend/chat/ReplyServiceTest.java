@@ -1,5 +1,6 @@
 package com.fertilizer.backend.chat;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -58,14 +59,27 @@ class ReplyServiceTest {
     }
 
     @Test
-    void sendFailureDoesNotThrow() {
+    void sendFailureOfTheFirstPartIsPropagatedSoTheWorkerCanRetry() {
         when(store.isHandedToHuman("P1", "U1")).thenReturn(false);
         when(agent.reply(anyString())).thenReturn(new LlmClient.Reply("Xin chào", "test"));
         when(sender.send(anyString(), anyString())).thenThrow(new MessengerException("Send API trả lỗi HTTP 400"));
 
-        service.reply(event);
+        assertThrows(MessengerException.class, () -> service.reply(event));
 
         verify(store, never()).saveOutgoing(anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void failureAfterTheFirstPartDoesNotRetryTheWholeReply() {
+        when(store.isHandedToHuman("P1", "U1")).thenReturn(false);
+        when(agent.reply(anyString())).thenReturn(new LlmClient.Reply("x".repeat(4000), "test")); // 3 phần
+        when(sender.send(anyString(), anyString()))
+                .thenReturn("mid.p1")
+                .thenThrow(new MessengerException("Send API trả lỗi HTTP 500"));
+
+        service.reply(event); // không ném: khách đã nhận phần đầu, thử lại cả câu sẽ gửi trùng
+
+        verify(store).saveOutgoing(eq("P1"), eq("U1"), eq("mid.p1"), anyString());
     }
 
     @Test
